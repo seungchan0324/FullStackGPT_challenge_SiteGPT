@@ -152,8 +152,8 @@ if key:
             | RunnableLambda(get_answers)
             | RunnableLambda(choose_answer)
         )
-
-        result = chain.invoke(message)
+        with st.spinner("Asking to the GPT..."):
+            result = chain.invoke(message)
         st.markdown(result.content)
 else:
     st.info("You must enter the API key through the sidebar.")
