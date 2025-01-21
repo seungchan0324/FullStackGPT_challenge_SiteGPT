@@ -134,26 +134,26 @@ def load_website(url):
     )
     loader.requests_per_second = 5
     docs = loader.load_and_split(text_splitter=splitter)
-    vector_store = FAISS.from_documents(docs, OpenAIEmbeddings())
+    vector_store = FAISS.from_documents(docs, OpenAIEmbeddings(api_key=key))
     return vector_store.as_retriever()
 
 
 cloudflare_sitemap_url = "https://developers.cloudflare.com//sitemap-0.xml"
 
-retriever = load_website(cloudflare_sitemap_url)
-message = st.chat_input("Ask a question to the Cloudflare GPT.")
+if key:
+    retriever = load_website(cloudflare_sitemap_url)
+    message = st.chat_input("Ask a question to the Cloudflare GPT.")
+    if message:
+        chain = (
+            {
+                "docs": retriever,
+                "question": RunnablePassthrough(),
+            }
+            | RunnableLambda(get_answers)
+            | RunnableLambda(choose_answer)
+        )
 
-if message and key:
-    chain = (
-        {
-            "docs": retriever,
-            "question": RunnablePassthrough(),
-        }
-        | RunnableLambda(get_answers)
-        | RunnableLambda(choose_answer)
-    )
-
-    result = chain.invoke(message)
-    st.markdown(result.content)
-elif message and not key:
-    st.error("You must enter the API key through the sidebar.")
+        result = chain.invoke(message)
+        st.markdown(result.content)
+else:
+    st.info("You must enter the API key through the sidebar.")
