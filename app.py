@@ -27,10 +27,12 @@ with st.sidebar:
     st.write("https://github.com/seungchan0324/FullStackGPT_challenge_SiteGPT")
     key = st.text_input("please give your api key")
 
-llm = ChatOpenAI(
-    temperature=0.1,
-    api_key=key,
-)
+if key:
+    llm = ChatOpenAI(
+        temperature=0.1,
+        api_key=key,
+    )
+
 
 answers_prompt = ChatPromptTemplate.from_template(
     """
