@@ -6,6 +6,7 @@ from langchain.schema.runnable import RunnablePassthrough, RunnableLambda
 from langchain.chat_models import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 import streamlit as st
+from operator import itemgetter
 
 st.set_page_config(
     page_title="CloudflareGPT",
@@ -33,6 +34,9 @@ if key:
         api_key=key,
     )
 
+if "messages" not in st.session_state:
+    st.session_state["messages"] = []
+
 
 answers_prompt = ChatPromptTemplate.from_template(
     """
@@ -55,6 +59,8 @@ Question: How far away is the sun?
 Answer: I don't know
 Score: 0
 
+History: {history}
+
 Your turn!
 Question: {question}
 """
@@ -64,13 +70,18 @@ Question: {question}
 def get_answers(inputs):
     docs = inputs["docs"]
     question = inputs["question"]
+    history = inputs["history"]
     answer_chain = answers_prompt | llm
     return {
         "question": question,
         "answers": [
             {
                 "answer": answer_chain.invoke(
-                    {"context": doc.page_content, "question": question}
+                    {
+                        "context": doc.page_content,
+                        "question": question,
+                        "history": history,
+                    }
                 ).content,
                 "source": doc.metadata["source"],
                 "date": doc.metadata["lastmod"],
@@ -140,22 +151,63 @@ def load_website(url):
     return vector_store.as_retriever()
 
 
+def load_message():
+    converted_message = []
+    for message in st.session_state["messages"]:
+        if message["role"] == "human":
+            converted_message.append({"human": message["message"]})
+        elif message["role"] == "ai":
+            converted_message.append({"ai": message["message"]})
+    return converted_message
+
+
+def save_message(message, role):
+    st.session_state["messages"].append(
+        {
+            "message": message,
+            "role": role,
+        }
+    )
+
+
+def send_message(message, role, save=False):
+    with st.chat_message(role):
+        st.markdown(message)
+    if save:
+        save_message(message, role)
+
+
+def paint_history():
+    for message in st.session_state["messages"]:
+        send_message(message["message"], message["role"])
+
+
 cloudflare_sitemap_url = "https://developers.cloudflare.com//sitemap-0.xml"
 
 if key:
     retriever = load_website(cloudflare_sitemap_url)
+
+    # 메세지 보내는거
+    send_message("What can I do for you?", "AI")
+    # 메세지 뿌리는거
+    paint_history()
+
+    history = load_message()
+
     message = st.chat_input("Ask a question to the Cloudflare GPT.")
     if message:
+        send_message(message, "human", True)
         chain = (
             {
-                "docs": retriever,
-                "question": RunnablePassthrough(),
+                "docs": itemgetter("question") | retriever,
+                "question": itemgetter("question"),
+                "history": itemgetter("history"),
             }
             | RunnableLambda(get_answers)
             | RunnableLambda(choose_answer)
         )
         with st.spinner("Asking to the GPT..."):
-            result = chain.invoke(message)
-        st.markdown(result.content)
+            result = chain.invoke({"question": message, "history": history})
+        send_message(result.content, "ai", True)
 else:
     st.info("You must enter the API key through the sidebar.")
